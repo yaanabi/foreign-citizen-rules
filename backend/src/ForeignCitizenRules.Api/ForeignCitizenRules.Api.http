@@ -1,0 +1,6 @@
+@ForeignCitizenRules.Api_HostAddress = http://localhost:5204
+
+GET {{ForeignCitizenRules.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
