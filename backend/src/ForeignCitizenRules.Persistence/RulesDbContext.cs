@@ -23,8 +23,9 @@ public sealed class RulesDbContext(DbContextOptions<RulesDbContext> options) : D
     {
         modelBuilder.Entity<Roadmap>().Property(x => x.Version).IsRequired().HasMaxLength(100);
         modelBuilder.Entity<Rule>().Property(x => x.Name).IsRequired().HasMaxLength(200);
+        modelBuilder.Entity<Profile>().Property(x => x.Priority).HasDefaultValue(0);
+        modelBuilder.Entity<Profile>().Property(x => x.IsFallback).HasDefaultValue(false);
         modelBuilder.Entity<Guidance>().Property(x => x.Description).IsRequired();
-        modelBuilder.Entity<Guidance>().Property(x => x.Refusal).IsRequired();
         modelBuilder.Entity<TargetDocument>().Property(x => x.Name).IsRequired().HasMaxLength(200);
         modelBuilder.Entity<Organization>().Property(x => x.Name).IsRequired().HasMaxLength(200);
         modelBuilder.Entity<Organization>().Property(x => x.Address).IsRequired().HasMaxLength(300);
@@ -44,6 +45,9 @@ public sealed class RulesDbContext(DbContextOptions<RulesDbContext> options) : D
         modelBuilder.Entity<CitizenRoadmapRequest>().Property(x => x.CitizenshipName).IsRequired().HasMaxLength(100);
         modelBuilder.Entity<CitizenRoadmapRequest>().Property(x => x.Status).IsRequired().HasMaxLength(30);
         modelBuilder.Entity<CitizenRoadmapRequest>().Property(x => x.Message).IsRequired().HasMaxLength(2000);
+        modelBuilder.Entity<CitizenRoadmapRequest>().Property(x => x.MatchedTargetDocumentName).HasMaxLength(200);
+        modelBuilder.Entity<CitizenRoadmapRequest>().Property(x => x.MatchedOrganizationsJson);
+        modelBuilder.Entity<CitizenRoadmapRequest>().Property(x => x.MatchedGuidanceDescription);
 
         modelBuilder.Entity<Roadmap>()
             .HasMany(x => x.Rules)

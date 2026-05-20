@@ -223,8 +223,7 @@ Request:
   "roadmapVersion": "v1",
   "targetDocumentId": 1,
   "guidance": {
-    "description": "Pass the medical examination.",
-    "refusal": "The rule does not apply."
+    "description": "Pass the medical examination."
   },
   "profiles": [
     {
@@ -250,8 +249,7 @@ Response `201 Created`:
   "name": "Medical examination for work",
   "roadmapVersion": "v1",
   "guidance": {
-    "description": "Pass the medical examination.",
-    "refusal": "The rule does not apply."
+    "description": "Pass the medical examination."
   },
   "targetDocument": {
     "id": 1,
@@ -299,8 +297,7 @@ Response `200 OK`:
     "name": "Medical examination for work",
     "roadmapVersion": "v1",
     "guidance": {
-      "description": "Pass the medical examination.",
-      "refusal": "The rule does not apply."
+      "description": "Pass the medical examination."
     },
     "targetDocument": {
       "id": 1,
@@ -530,8 +527,7 @@ Response `200 OK` when a rule is matched:
     "organizations": []
   },
   "guidance": {
-    "description": "Pass the medical examination.",
-    "refusal": "The rule does not apply."
+    "description": "Pass the medical examination."
   }
 }
 ```
@@ -588,8 +584,7 @@ Response `200 OK`:
       "organizations": []
     },
     "guidance": {
-      "description": "Pass the medical examination.",
-      "refusal": "The rule does not apply."
+      "description": "Pass the medical examination."
     }
   }
 ]

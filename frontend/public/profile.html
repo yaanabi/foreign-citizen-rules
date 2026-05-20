@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Профиль · Foreign Citizen Rules</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="topbar" id="topbar"></header>
+
+    <main class="container medium">
+      <h1>Личный кабинет</h1>
+      <p class="muted">
+        Здесь вы можете обновить данные профиля и свойства, по которым подбирается дорожная карта.
+      </p>
+
+      <div id="alerts"></div>
+
+      <form id="profile-form" class="card">
+        <h2>Основные данные</h2>
+        <div class="form-row">
+          <div class="field">
+            <label for="fullName">ФИО</label>
+            <input id="fullName" type="text" required />
+          </div>
+          <div class="field">
+            <label for="email">E-mail</label>
+            <input id="email" type="email" disabled />
+          </div>
+        </div>
+        <div class="field">
+          <label for="citizenshipName">Гражданство</label>
+          <select id="citizenshipName"></select>
+          <input id="citizenshipManual" type="text" placeholder="или введите название гражданства" class="mt-8" />
+        </div>
+
+        <h2 class="mt-24">Свойства профиля</h2>
+        <p class="muted">
+          Выберите дополнительные характеристики (если они есть).
+        </p>
+
+        <div id="props-list"></div>
+        <button type="button" class="btn btn-secondary btn-sm mt-8" id="add-prop">+ Добавить свойство</button>
+
+        <div class="actions mt-24">
+          <button type="submit" class="btn btn-primary" id="save-btn">Сохранить</button>
+          <a href="/roadmap.html" class="btn btn-accent">Перейти к дорожной карте →</a>
+        </div>
+      </form>
+    </main>
+
+    <footer>Foreign Citizen Rules · учебный проект, группа 3</footer>
+  </div>
+
+  <script type="module">
+    import { api, auth } from '/assets/api.js?v=profile-properties-1';
+    import { renderTopbar, showAlert, clearAlerts, requireAuth, escapeHtml } from '/assets/ui.js?v=profile-properties-1';
+
+    renderTopbar('profile');
+    if (!requireAuth()) throw new Error('not authed');
+
+    const propsList = document.getElementById('props-list');
+    let profileProperties = [];
+
+    function optionsHtml(items, selected, placeholder) {
+      const selectedValue = selected || '';
+      const options = [`<option value="">${escapeHtml(placeholder)}</option>`];
+      for (const item of items) {
+        const value = typeof item === 'string' ? item : item.name;
+        options.push(`<option value="${escapeHtml(value)}" ${value === selectedValue ? 'selected' : ''}>${escapeHtml(value)}</option>`);
+      }
+      if (selectedValue && !items.some(item => (typeof item === 'string' ? item : item.name) === selectedValue)) {
+        options.push(`<option value="${escapeHtml(selectedValue)}" selected>${escapeHtml(selectedValue)}</option>`);
+      }
+      return options.join('');
+    }
+
+    function valuesForProperty(name) {
+      return profileProperties.find(p => p.name === name)?.values || [];
+    }
+
+    function refreshValueSelect(row, selectedValue = '') {
+      const name = row.querySelector('[data-key=name]').value;
+      const valueSelect = row.querySelector('[data-key=value]');
+      valueSelect.innerHTML = optionsHtml(valuesForProperty(name), selectedValue, '— выберите значение —');
+      valueSelect.disabled = !name;
+    }
+
+    function addPropRow(name = '', value = '') {
+      const row = document.createElement('div');
+      row.className = 'props';
+      row.innerHTML = `
+        <select data-key="name">
+          ${optionsHtml(profileProperties, name, '— выберите свойство —')}
+        </select>
+        <select data-key="value">
+          ${optionsHtml(valuesForProperty(name), value, '— выберите значение —')}
+        </select>
+        <button type="button" class="btn btn-ghost btn-sm" data-remove>✕</button>
+      `;
+      row.querySelector('[data-key=name]').addEventListener('change', () => refreshValueSelect(row));
+      row.querySelector('[data-remove]').addEventListener('click', () => row.remove());
+      propsList.appendChild(row);
+      refreshValueSelect(row, value);
+    }
+
+    function collectProps() {
+      return Array.from(propsList.querySelectorAll('.props'))
+        .map(row => ({
+          name:  row.querySelector('[data-key=name]').value.trim(),
+          value: row.querySelector('[data-key=value]').value.trim(),
+        }))
+        .filter(p => p.name);
+    }
+
+    document.getElementById('add-prop').addEventListener('click', () => addPropRow());
+
+    // Подгружаем справочник гражданств и текущий профиль.
+    (async () => {
+      try {
+        const [me, citizenships, propertyRefs] = await Promise.all([
+          api.me(),
+          api.citizenships(),
+          api.profileProperties(),
+        ]);
+        profileProperties = propertyRefs || [];
+        document.getElementById('fullName').value = me.fullName || '';
+        document.getElementById('email').value    = me.email || '';
+
+        const sel = document.getElementById('citizenshipName');
+        sel.innerHTML = '<option value="">— выберите —</option>';
+        for (const c of citizenships) {
+          const o = document.createElement('option');
+          o.value = c.name; o.textContent = c.name;
+          if (c.name === me.citizenshipName) o.selected = true;
+          sel.appendChild(o);
+        }
+
+        (me.properties || []).forEach(p => addPropRow(p.name, p.value || ''));
+        if (!me.properties || !me.properties.length) addPropRow();
+
+        auth.setCitizen(me);
+      } catch (e) {
+        if (e.status === 401) { auth.clearToken(); location.href = '/login.html'; return; }
+        showAlert('err', e.message || 'Не удалось загрузить профиль');
+      }
+    })();
+
+    document.getElementById('profile-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      clearAlerts();
+      const btn = document.getElementById('save-btn');
+      btn.disabled = true;
+      try {
+        const manual = document.getElementById('citizenshipManual').value.trim();
+        const citizenshipName = manual || document.getElementById('citizenshipName').value || undefined;
+        const updated = await api.updateMe({
+          fullName: document.getElementById('fullName').value.trim() || undefined,
+          citizenshipName,
+          properties: collectProps(),
+        });
+        auth.setCitizen(updated);
+        showAlert('ok', 'Профиль сохранён');
+        document.getElementById('citizenshipManual').value = '';
+      } catch (e) {
+        showAlert('err', e.message || 'Не удалось сохранить');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using ForeignCitizenRules.Domain;
 using ForeignCitizenRules.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,7 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
         var stayPurposeName = request.StayPurposeName!.Trim();
         var citizenshipName = citizen.Citizenship.Name;
         var match = await FindMatchingProfileAsync(entryDate, stayPurposeName, citizen, cancellationToken);
+        var metrics = match == null ? null : BuildMetrics(entryDate, match.Profile);
         var message = match == null ? "Подходящее правило не найдено." : BuildRoadmapMessage(entryDate, match.Profile, match.Rule);
 
         var history = new CitizenRoadmapRequest
@@ -29,6 +31,13 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
             StayPurposeName = stayPurposeName,
             CitizenshipName = citizenshipName,
             Rule = match?.Rule,
+            MatchedStayDays = metrics?.StayDays,
+            MatchedDaysPassed = metrics?.DaysPassed,
+            MatchedDaysRemaining = metrics?.DaysRemaining,
+            MatchedDeadlineDate = metrics?.DeadlineDate,
+            MatchedTargetDocumentName = match?.Rule.TargetDocument.Name,
+            MatchedOrganizationsJson = match == null ? null : JsonSerializer.Serialize(match.Rule.TargetDocument.Organizations.OrderBy(x => x.Name).Select(DocumentApplicationService.ToDto).ToList()),
+            MatchedGuidanceDescription = match?.Rule.Guidance.Description,
             CreatedAt = DateTime.UtcNow,
             Status = match == null ? "not_found" : "matched",
             Message = message
@@ -48,18 +57,12 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
         }
 
         var requests = await db.CitizenRoadmapRequests
-            .Include(x => x.Rule).ThenInclude(x => x!.Roadmap)
-            .Include(x => x.Rule).ThenInclude(x => x!.Guidance)
-            .Include(x => x.Rule).ThenInclude(x => x!.TargetDocument).ThenInclude(x => x.Organizations)
-            .Include(x => x.Rule).ThenInclude(x => x!.Profiles).ThenInclude(x => x.Properties)
-            .Include(x => x.Rule).ThenInclude(x => x!.Profiles).ThenInclude(x => x.StayPurposes)
-            .Include(x => x.Rule).ThenInclude(x => x!.Profiles).ThenInclude(x => x.Citizenships)
             .Where(x => x.CitizenId == citizen.Id)
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync(cancellationToken);
 
         return requests
-            .Select(x => ToDto(x, FindMatchingProfile(x.Rule, x.EntryDate, x.StayPurposeName, x.CitizenshipName, citizen.Properties)))
+            .Select(ToDto)
             .ToList();
     }
 
@@ -75,20 +78,33 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
             .Include(x => x.Profiles).ThenInclude(x => x.Citizenships)
             .Where(x => x.Profiles.Any(p =>
                 p.StayDays >= daysInCountry &&
-                p.StayPurposes.Any(sp => sp.Name == stayPurposeName) &&
-                p.Citizenships.Any(c => c.Name == citizenshipName)))
+                p.StayPurposes.Any(sp => sp.Name == stayPurposeName)))
             .ToListAsync(cancellationToken);
 
-        return rules
-            .Select(rule => FindMatchingProfile(rule, entryDate, stayPurposeName, citizenshipName, citizen.Properties))
+        var normalMatch = rules
+            .Select(rule => FindMatchingProfile(rule, entryDate, stayPurposeName, citizenshipName, citizen.Properties, includeFallback: false))
             .Where(match => match != null)
-            .OrderBy(match => match!.Profile.StayDays)
+            .OrderByDescending(match => match!.Priority)
+            .ThenBy(match => match!.Profile.StayDays)
             .ThenByDescending(match => match!.Profile.Properties.Count)
+            .ThenBy(match => match!.Rule.Id)
+            .FirstOrDefault();
+
+        if (normalMatch != null)
+        {
+            return normalMatch;
+        }
+
+        return rules
+            .Select(rule => FindMatchingProfile(rule, entryDate, stayPurposeName, citizenshipName, citizen.Properties, includeFallback: true))
+            .Where(match => match != null)
+            .OrderByDescending(match => match!.Priority)
+            .ThenBy(match => match!.Profile.StayDays)
             .ThenBy(match => match!.Rule.Id)
             .FirstOrDefault();
     }
 
-    private static RoadmapMatch? FindMatchingProfile(Rule? rule, DateTime entryDate, string stayPurposeName, string citizenshipName, ICollection<CitizenProfileProperty> citizenProperties)
+    private static RoadmapMatch? FindMatchingProfile(Rule? rule, DateTime entryDate, string stayPurposeName, string citizenshipName, ICollection<CitizenProfileProperty> citizenProperties, bool includeFallback = true)
     {
         if (rule == null)
         {
@@ -96,20 +112,97 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
         }
 
         var daysInCountry = GetDaysInCountry(entryDate);
-        var profile = rule.Profiles
-            .Where(p =>
-                p.StayDays >= daysInCountry &&
-                p.StayPurposes.Any(sp => sp.Name == stayPurposeName) &&
-                p.Citizenships.Any(c => c.Name == citizenshipName) &&
-                RulePropertiesMatch(p.Properties, citizenProperties))
-            .OrderBy(p => p.StayDays)
-            .ThenByDescending(p => p.Properties.Count)
+        var match = rule.Profiles
+            .Where(p => !IsFallbackOnly(p) && ProfileBaseMatches(p, daysInCountry, stayPurposeName))
+            .Select(p => new { Profile = p, Priority = GetMatchPriority(p, citizenshipName, citizenProperties) })
+            .Where(x => x.Priority > 0)
+            .OrderByDescending(x => x.Priority)
+            .ThenBy(x => x.Profile.StayDays)
+            .ThenByDescending(x => x.Profile.Properties.Count)
             .FirstOrDefault();
 
-        return profile == null ? null : new RoadmapMatch(rule, profile);
+        if (match == null && includeFallback)
+        {
+            match = rule.Profiles
+                .Where(p => IsFallbackOnly(p) && ProfileBaseMatches(p, daysInCountry, stayPurposeName))
+                .OrderBy(p => p.StayDays)
+                .Select(p => new { Profile = p, Priority = 0 })
+                .FirstOrDefault();
+        }
+
+        return match == null ? null : new RoadmapMatch(rule, match.Profile, match.Priority);
     }
 
-    private static bool RulePropertiesMatch(ICollection<ProfileProperty> ruleProperties, ICollection<CitizenProfileProperty> citizenProperties)
+    private static bool ProfileBaseMatches(Profile profile, int daysInCountry, string stayPurposeName)
+    {
+        return profile.StayDays >= daysInCountry &&
+            profile.StayPurposes.Any(sp => sp.Name == stayPurposeName);
+    }
+
+    private static bool CitizenshipMatches(Profile profile, string citizenshipName)
+    {
+        return profile.Citizenships.Any(c => c.Name == citizenshipName);
+    }
+
+    private static int GetMatchPriority(Profile profile, string citizenshipName, ICollection<CitizenProfileProperty> citizenProperties)
+    {
+        var matchedPropertyNames = GetMatchedPropertyNames(profile.Properties, citizenProperties).ToList();
+
+        if (matchedPropertyNames.Any(IsHighQualifiedSpecialistProperty))
+        {
+            return 300;
+        }
+
+        if (matchedPropertyNames.Any(IsCompatriotProgramProperty))
+        {
+            return 200;
+        }
+
+        if (CitizenshipMatches(profile, citizenshipName))
+        {
+            return 100;
+        }
+
+        if (matchedPropertyNames.Count > 0)
+        {
+            return 50;
+        }
+
+        return 0;
+    }
+
+    private static bool IsFallbackOnly(Profile profile)
+    {
+        return profile.IsFallback && profile.Citizenships.Count == 0 && profile.Properties.Count == 0;
+    }
+
+    private static IEnumerable<string> GetMatchedPropertyNames(ICollection<ProfileProperty> ruleProperties, ICollection<CitizenProfileProperty> citizenProperties)
+    {
+        var citizenPairs = new HashSet<string>(citizenProperties
+            .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+            .Select(x => PropertyKey(x.Name, x.Value)));
+
+        return ruleProperties
+            .Where(x => !string.IsNullOrWhiteSpace(x.Name) && citizenPairs.Contains(PropertyKey(x.Name, x.Value)))
+            .Select(x => x.Name.Trim().ToLowerInvariant());
+    }
+
+    private static bool IsHighQualifiedSpecialistProperty(string name)
+    {
+        return name.Contains("высококвалифицированн") ||
+            name.Contains("вкс") ||
+            name.Contains("highqualified") ||
+            name.Contains("high qualified");
+    }
+
+    private static bool IsCompatriotProgramProperty(string name)
+    {
+        return name.Contains("переселения соотечественников") ||
+            name.Contains("программа переселения") ||
+            name.Contains("compatriot");
+    }
+
+    private static bool AnyRulePropertyMatches(ICollection<ProfileProperty> ruleProperties, ICollection<CitizenProfileProperty> citizenProperties)
     {
         var citizenPairs = new HashSet<string>(citizenProperties
             .Where(x => !string.IsNullOrWhiteSpace(x.Name))
@@ -117,7 +210,7 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
 
         return ruleProperties
             .Where(x => !string.IsNullOrWhiteSpace(x.Name))
-            .All(x => citizenPairs.Contains(PropertyKey(x.Name, x.Value)));
+            .Any(x => citizenPairs.Contains(PropertyKey(x.Name, x.Value)));
     }
 
     private static CitizenRoadmapDto ToDto(CitizenRoadmapRequest request, RoadmapMatch? match)
@@ -139,8 +232,57 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
             DeadlineDate = metrics?.DeadlineDate,
             IsOverdue = metrics?.IsOverdue ?? false,
             TargetDocument = match?.Rule.TargetDocument == null ? null : DocumentApplicationService.ToDto(match.Rule.TargetDocument),
-            Guidance = match?.Rule.Guidance == null ? null : new GuidanceDto { Description = match.Rule.Guidance.Description, Refusal = match.Rule.Guidance.Refusal }
+            Guidance = match?.Rule.Guidance == null ? null : new GuidanceDto { Description = match.Rule.Guidance.Description }
         };
+    }
+
+    private static CitizenRoadmapDto ToDto(CitizenRoadmapRequest request)
+    {
+        return new CitizenRoadmapDto
+        {
+            Id = request.Id,
+            CitizenId = request.CitizenId,
+            EntryDate = request.EntryDate,
+            StayPurpose = request.StayPurposeName,
+            Citizenship = request.CitizenshipName,
+            RuleId = request.RuleId,
+            Status = request.Status,
+            Message = request.Message,
+            StayDays = request.MatchedStayDays,
+            DaysPassed = request.MatchedDaysPassed,
+            DaysRemaining = request.MatchedDaysRemaining,
+            DeadlineDate = request.MatchedDeadlineDate,
+            IsOverdue = request.MatchedDaysRemaining < 0,
+            TargetDocument = string.IsNullOrWhiteSpace(request.MatchedTargetDocumentName) ? null : new TargetDocumentDto
+            {
+                Id = 0,
+                Name = request.MatchedTargetDocumentName,
+                Organizations = DeserializeOrganizations(request.MatchedOrganizationsJson)
+            },
+            Guidance = string.IsNullOrWhiteSpace(request.MatchedGuidanceDescription)
+                ? null
+                : new GuidanceDto
+                {
+                    Description = request.MatchedGuidanceDescription ?? string.Empty
+                }
+        };
+    }
+
+    private static List<OrganizationDto> DeserializeOrganizations(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<OrganizationDto>>(json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     private static string BuildRoadmapMessage(DateTime entryDate, Profile profile, Rule rule)
@@ -186,7 +328,7 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
         if (string.IsNullOrWhiteSpace(request.StayPurposeName)) throw new ArgumentException("StayPurposeName is required.", nameof(request));
     }
 
-    private sealed record RoadmapMatch(Rule Rule, Profile Profile);
+    private sealed record RoadmapMatch(Rule Rule, Profile Profile, int Priority);
     private sealed record RoadmapMetrics(int StayDays, int DaysPassed, int DaysRemaining, DateTime DeadlineDate)
     {
         public bool IsOverdue => DaysRemaining < 0;

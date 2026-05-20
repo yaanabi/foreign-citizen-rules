@@ -24,6 +24,8 @@ public sealed class Profile
     public int Id { get; set; }
     public int RuleId { get; set; }
     public int StayDays { get; set; }
+    public int Priority { get; set; }
+    public bool IsFallback { get; set; }
     public Rule Rule { get; set; } = null!;
     public ICollection<ProfileProperty> Properties { get; set; } = new HashSet<ProfileProperty>();
     public ICollection<StayPurpose> StayPurposes { get; set; } = new HashSet<StayPurpose>();
@@ -73,7 +75,6 @@ public sealed class Guidance
 {
     public int Id { get; set; }
     public string Description { get; set; } = string.Empty;
-    public string Refusal { get; set; } = string.Empty;
     public Rule Rule { get; set; } = null!;
 }
 
@@ -117,6 +118,13 @@ public sealed class CitizenRoadmapRequest
     public string StayPurposeName { get; set; } = string.Empty;
     public string CitizenshipName { get; set; } = string.Empty;
     public int? RuleId { get; set; }
+    public int? MatchedStayDays { get; set; }
+    public int? MatchedDaysPassed { get; set; }
+    public int? MatchedDaysRemaining { get; set; }
+    public DateTime? MatchedDeadlineDate { get; set; }
+    public string? MatchedTargetDocumentName { get; set; }
+    public string? MatchedOrganizationsJson { get; set; }
+    public string? MatchedGuidanceDescription { get; set; }
     public DateTime CreatedAt { get; set; }
     public string Status { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;

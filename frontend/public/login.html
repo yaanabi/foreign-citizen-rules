@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Вход · Foreign Citizen Rules</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="topbar" id="topbar"></header>
+
+    <main class="container narrow">
+      <h1>Вход</h1>
+      <p class="muted">Введите e-mail и пароль вашего аккаунта.</p>
+
+      <div id="alerts"></div>
+
+      <form id="login-form" class="card">
+        <div class="field">
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" required autocomplete="email" />
+        </div>
+        <div class="field">
+          <label for="password">Пароль</label>
+          <input id="password" name="password" type="password" required autocomplete="current-password" />
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary btn-block" id="submit-btn">Войти</button>
+        </div>
+        <p class="muted center mt-16 mb-0">
+          Нет аккаунта? <a href="/register.html">Зарегистрироваться</a>
+        </p>
+      </form>
+    </main>
+
+    <footer>Foreign Citizen Rules · учебный проект, группа 3</footer>
+  </div>
+
+  <script type="module">
+    import { api, auth } from '/assets/api.js';
+    import { renderTopbar, showAlert, clearAlerts } from '/assets/ui.js';
+
+    renderTopbar();
+
+    document.getElementById('login-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      clearAlerts();
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+
+      const data = new FormData(ev.target);
+      try {
+        const r = await api.login({ email: data.get('email'), password: data.get('password') });
+        auth.setToken(r.token);
+        auth.setCitizen(r.citizen);
+        const params = new URLSearchParams(location.search);
+        location.href = params.get('next') || '/profile.html';
+      } catch (e) {
+        const msg = e.status === 401 ? 'Неверный e-mail или пароль' : (e.message || 'Не удалось войти');
+        showAlert('err', msg);
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

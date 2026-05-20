@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Дорожная карта · Foreign Citizen Rules</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="topbar" id="topbar"></header>
+
+    <main class="container medium">
+      <h1>Дорожная карта</h1>
+      <p class="muted">
+        Укажите дату въезда и цель пребывания. Сервис подберёт дорожную карту по вашему профилю
+        (гражданство берётся из ваших данных) и вернёт нужный документ, организации и срок.
+      </p>
+
+      <div id="alerts"></div>
+
+      <form id="roadmap-form" class="card">
+        <h2>Запросить дорожную карту</h2>
+        <div class="form-row">
+          <div class="field">
+            <label for="entryDate">Дата въезда</label>
+            <input id="entryDate" type="date" required />
+            <div class="hint">Не позднее сегодняшнего дня.</div>
+          </div>
+          <div class="field">
+            <label for="stayPurpose">Цель пребывания</label>
+            <select id="stayPurpose" required></select>
+            <input id="stayPurposeManual" type="text" placeholder="или введите вручную" class="mt-8" />
+          </div>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" id="submit-btn">Подобрать</button>
+        </div>
+      </form>
+
+      <div id="result"></div>
+
+      <div class="section-title mt-24">
+        <h2>История запросов</h2>
+        <span class="hint">от новых к старым</span>
+      </div>
+      <div id="history"></div>
+    </main>
+
+    <footer>Foreign Citizen Rules · учебный проект, группа 3</footer>
+  </div>
+
+  <script type="module">
+    import { api, auth } from '/assets/api.js';
+    import { renderTopbar, showAlert, clearAlerts, requireAuth, escapeHtml, fmtDate, fmtDateTime, todayIso } from '/assets/ui.js';
+
+    renderTopbar('roadmap');
+    if (!requireAuth()) throw new Error('not authed');
+
+    const dateInput = document.getElementById('entryDate');
+    dateInput.value = todayIso();
+    dateInput.max = todayIso();
+
+    // Подгружаем цели пребывания.
+    (async () => {
+      try {
+        const purposes = await api.stayPurposes();
+        const sel = document.getElementById('stayPurpose');
+        sel.innerHTML = '<option value="">— выберите —</option>';
+        for (const p of purposes) {
+          const o = document.createElement('option');
+          o.value = p.name; o.textContent = p.name;
+          sel.appendChild(o);
+        }
+      } catch (e) { /* пусто — можно ввести вручную */ }
+
+      await loadHistory();
+    })();
+
+    function renderRoadmapCard(r) {
+      const matched = r.status === 'matched';
+      const badge = matched
+        ? (r.isOverdue ? '<span class="badge err">просрочено</span>'
+                       : '<span class="badge ok">правило найдено</span>')
+        : '<span class="badge warn">правило не найдено</span>';
+
+      const orgs = matched && r.targetDocument?.organizations?.length
+        ? `<ul style="margin: 8px 0 0; padding-left: 18px;">
+             ${r.targetDocument.organizations.map(o =>
+               `<li><b>${escapeHtml(o.name)}</b> — ${escapeHtml(o.address)}</li>`).join('')}
+           </ul>`
+        : '<div class="muted">Организации не указаны.</div>';
+
+      const metrics = matched ? `
+        <div class="form-row" style="grid-template-columns: repeat(4, 1fr); gap: 12px;">
+          <div><div class="muted">Дата въезда</div><b>${fmtDate(r.entryDate)}</b></div>
+          <div><div class="muted">Срок (дней)</div><b>${r.stayDays ?? '—'}</b></div>
+          <div><div class="muted">Прошло дней</div><b>${r.daysPassed ?? '—'}</b></div>
+          <div><div class="muted">Крайний срок</div><b>${fmtDate(r.deadlineDate)}</b></div>
+        </div>` : '';
+
+      const guidance = matched && r.guidance ? `
+        <div class="step mt-16">
+          <div class="step-num">i</div>
+          <div>
+            <h4>Что делать</h4>
+            <div>${escapeHtml(r.guidance.description)}</div>
+          </div>
+        </div>` : '';
+
+      return `
+        <div class="card">
+          <div class="section-title">
+            <h3 style="margin:0">${escapeHtml(r.stayPurpose)} · ${escapeHtml(r.citizenship)} ${badge}</h3>
+            <span class="hint">${fmtDateTime(r.createdAt || r.entryDate)}</span>
+          </div>
+          ${metrics}
+          ${matched ? `
+            <h4 class="mt-16">Целевой документ: ${escapeHtml(r.targetDocument?.name || '—')}</h4>
+            ${orgs}
+            ${guidance}
+          ` : `
+            <div class="alert alert-warn mb-0">${escapeHtml(r.message || 'Подходящее правило не найдено.')}</div>
+          `}
+        </div>
+      `;
+    }
+
+    document.getElementById('roadmap-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      clearAlerts();
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+
+      const manual = document.getElementById('stayPurposeManual').value.trim();
+      const stayPurpose = manual || document.getElementById('stayPurpose').value;
+      if (!stayPurpose) {
+        showAlert('err', 'Укажите цель пребывания.');
+        btn.disabled = false; return;
+      }
+
+      try {
+        const r = await api.createRoadmap({
+          entryDate: new Date(dateInput.value + 'T00:00:00Z').toISOString(),
+          stayPurposeName: stayPurpose,
+        });
+        document.getElementById('result').innerHTML = `<h2 class="mt-24">Результат</h2>` + renderRoadmapCard(r);
+        await loadHistory();
+      } catch (e) {
+        showAlert('err', e.message || 'Не удалось получить дорожную карту');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    async function loadHistory() {
+      const host = document.getElementById('history');
+      try {
+        const items = await api.listRoadmaps();
+        if (!items || !items.length) {
+          host.innerHTML = '<div class="empty">У вас пока нет запросов.</div>';
+          return;
+        }
+        host.innerHTML = items.map(renderRoadmapCard).join('');
+      } catch (e) {
+        host.innerHTML = `<div class="alert alert-err">${escapeHtml(e.message || 'Не удалось загрузить историю')}</div>`;
+      }
+    }
+  </script>
+</body>
+</html>

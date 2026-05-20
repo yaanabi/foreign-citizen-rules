@@ -12,12 +12,13 @@ public sealed class CreateRuleRequest
 public sealed class GuidanceRequest
 {
     public string? Description { get; set; }
-    public string? Refusal { get; set; }
 }
 
 public sealed class ProfileRequest
 {
     public int StayDays { get; set; }
+    public int Priority { get; set; }
+    public bool IsFallback { get; set; }
     public List<string>? StayPurposes { get; set; }
     public List<string>? Citizenships { get; set; }
     public List<ProfilePropertyRequest>? Properties { get; set; }
@@ -42,7 +43,6 @@ public sealed class RuleDto
 public sealed class GuidanceDto
 {
     public string Description { get; set; } = string.Empty;
-    public string Refusal { get; set; } = string.Empty;
 }
 
 public sealed class TargetDocumentDto
@@ -62,6 +62,8 @@ public sealed class OrganizationDto
 public sealed class ProfileDto
 {
     public int StayDays { get; set; }
+    public int Priority { get; set; }
+    public bool IsFallback { get; set; }
     public List<string> StayPurposes { get; set; } = [];
     public List<string> Citizenships { get; set; } = [];
     public List<ProfilePropertyDto> Properties { get; set; } = [];
@@ -77,6 +79,12 @@ public sealed class ReferenceItemDto
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+}
+
+public sealed class ProfilePropertyReferenceDto
+{
+    public string Name { get; set; } = string.Empty;
+    public List<string> Values { get; set; } = [];
 }
 
 public sealed class OrganizationRequest

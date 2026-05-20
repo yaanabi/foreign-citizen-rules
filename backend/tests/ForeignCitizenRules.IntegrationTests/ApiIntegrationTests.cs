@@ -56,7 +56,6 @@ public sealed class ApiIntegrationTests
             Guidance = new GuidanceRequest
             {
                 Description = "Пройти медицинское освидетельствование.",
-                Refusal = "Правило не подходит."
             },
             Profiles =
             [
@@ -89,30 +88,135 @@ public sealed class ApiIntegrationTests
     }
 
     [TestMethod]
-    public async Task Roadmap_ShouldNotMatch_WhenCitizenPropertyIsMissing()
+    public async Task Roadmap_ShouldMatch_WhenCitizenshipMatchesAndPropertyIsMissing()
     {
         var token = Guid.NewGuid().ToString("N")[..6];
-        var organization = await CreateOrganization("missing-" + token);
-        var document = await CreateTargetDocument("missing-" + token, organization.Id);
+        var organization = await CreateOrganization("citizenship-" + token);
+        var document = await CreateTargetDocument("citizenship-" + token, organization.Id);
         await _client.PostAsJsonAsync("/api/v1/rules", new CreateRuleRequest
         {
-            Name = "Rule-missing-" + token,
+            Name = "Rule-citizenship-" + token,
             RoadmapVersion = "v1",
             TargetDocumentId = document.Id,
-            Guidance = new GuidanceRequest { Description = "Do", Refusal = "No" },
+            Guidance = new GuidanceRequest { Description = "Do" },
             Profiles =
             [
                 new ProfileRequest
                 {
                     StayDays = 30,
                     StayPurposes = ["WORK-" + token],
-                    Citizenships = ["KZ-" + token],
+                    Citizenships = ["KZ-" + token]
+                },
+                new ProfileRequest
+                {
+                    StayDays = 30,
+                    StayPurposes = ["WORK-" + token],
                     Properties = [new ProfilePropertyRequest { Name = "hasBenefit", Value = "true" }]
                 }
             ]
         });
 
-        var login = await RegisterAndLogin("missing-" + token, "KZ-" + token);
+        var login = await RegisterAndLogin("citizenship-" + token, "KZ-" + token);
+        var roadmap = await CreateRoadmap(login.Token, DateTime.UtcNow.Date, "WORK-" + token);
+
+        Assert.AreEqual("matched", roadmap.Status);
+        Assert.IsNotNull(roadmap.RuleId);
+        Assert.IsNotNull(roadmap.TargetDocument);
+    }
+
+    [TestMethod]
+    public async Task Roadmap_ShouldMatch_WhenPropertyMatchesAndCitizenshipIsEmpty()
+    {
+        var token = Guid.NewGuid().ToString("N")[..6];
+        var organization = await CreateOrganization("property-" + token);
+        var document = await CreateTargetDocument("property-" + token, organization.Id);
+        await _client.PostAsJsonAsync("/api/v1/rules", new CreateRuleRequest
+        {
+            Name = "Rule-property-" + token,
+            RoadmapVersion = "v1",
+            TargetDocumentId = document.Id,
+            Guidance = new GuidanceRequest { Description = "Do" },
+            Profiles =
+            [
+                new ProfileRequest
+                {
+                    StayDays = 30,
+                    StayPurposes = ["WORK-" + token],
+                    Properties = [new ProfilePropertyRequest { Name = "isStudent", Value = "true" }]
+                }
+            ]
+        });
+
+        var login = await RegisterAndLogin("property-" + token, "KZ-" + token);
+        await UpdateCitizenProperties(login.Token, [new ProfilePropertyRequest { Name = "isStudent", Value = "true" }]);
+        var roadmap = await CreateRoadmap(login.Token, DateTime.UtcNow.Date, "WORK-" + token);
+
+        Assert.AreEqual("matched", roadmap.Status);
+        Assert.IsNotNull(roadmap.RuleId);
+        Assert.IsNotNull(roadmap.TargetDocument);
+    }
+
+    [TestMethod]
+    public async Task Roadmap_ShouldNotMatch_WhenOneRequiredPropertyIsMissing()
+    {
+        var token = Guid.NewGuid().ToString("N")[..6];
+        var organization = await CreateOrganization("property-missing-" + token);
+        var document = await CreateTargetDocument("property-missing-" + token, organization.Id);
+        await _client.PostAsJsonAsync("/api/v1/rules", new CreateRuleRequest
+        {
+            Name = "Rule-property-missing-" + token,
+            RoadmapVersion = "v1",
+            TargetDocumentId = document.Id,
+            Guidance = new GuidanceRequest { Description = "Do" },
+            Profiles =
+            [
+                new ProfileRequest
+                {
+                    StayDays = 30,
+                    StayPurposes = ["WORK-" + token],
+                    Properties =
+                    [
+                        new ProfilePropertyRequest { Name = "hasBenefit", Value = "true" },
+                        new ProfilePropertyRequest { Name = "isStudent", Value = "true" }
+                    ]
+                }
+            ]
+        });
+
+        var login = await RegisterAndLogin("property-missing-" + token, "KZ-" + token);
+        await UpdateCitizenProperties(login.Token, [new ProfilePropertyRequest { Name = "isStudent", Value = "true" }]);
+        var roadmap = await CreateRoadmap(login.Token, DateTime.UtcNow.Date, "WORK-" + token);
+
+        Assert.AreEqual("not_found", roadmap.Status);
+        Assert.IsNull(roadmap.RuleId);
+        Assert.IsNull(roadmap.TargetDocument);
+    }
+
+    [TestMethod]
+    public async Task Roadmap_ShouldNotMatch_WhenNeitherCitizenshipNorPropertyMatches()
+    {
+        var token = Guid.NewGuid().ToString("N")[..6];
+        var organization = await CreateOrganization("no-match-" + token);
+        var document = await CreateTargetDocument("no-match-" + token, organization.Id);
+        await _client.PostAsJsonAsync("/api/v1/rules", new CreateRuleRequest
+        {
+            Name = "Rule-no-match-" + token,
+            RoadmapVersion = "v1",
+            TargetDocumentId = document.Id,
+            Guidance = new GuidanceRequest { Description = "Do" },
+            Profiles =
+            [
+                new ProfileRequest
+                {
+                    StayDays = 30,
+                    StayPurposes = ["WORK-" + token],
+                    Citizenships = ["BY-" + token],
+                    Properties = [new ProfilePropertyRequest { Name = "hasBenefit", Value = "true" }]
+                }
+            ]
+        });
+
+        var login = await RegisterAndLogin("no-match-" + token, "KZ-" + token);
         var roadmap = await CreateRoadmap(login.Token, DateTime.UtcNow.Date, "WORK-" + token);
 
         Assert.AreEqual("not_found", roadmap.Status);

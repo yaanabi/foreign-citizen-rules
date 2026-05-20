@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Регистрация · Foreign Citizen Rules</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="topbar" id="topbar"></header>
+
+    <main class="container narrow">
+      <h1>Регистрация</h1>
+      <p class="muted">Создайте аккаунт гражданина, чтобы запрашивать дорожные карты.</p>
+
+      <div id="alerts"></div>
+
+      <form id="register-form" class="card">
+        <div class="field">
+          <label for="fullName">ФИО</label>
+          <input id="fullName" name="fullName" type="text" required autocomplete="name" placeholder="Иванов Иван Иванович" />
+        </div>
+        <div class="field">
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" required autocomplete="email" placeholder="ivan@example.com" />
+        </div>
+        <div class="field">
+          <label for="password">Пароль</label>
+          <input id="password" name="password" type="password" required autocomplete="new-password" minlength="4" />
+          <div class="hint">Минимум 4 символа.</div>
+        </div>
+        <div class="field">
+          <label for="citizenshipName">Гражданство</label>
+          <select id="citizenshipName" name="citizenshipName">
+            <option value="">— выберите из списка или укажите вручную —</option>
+          </select>
+          <input id="citizenshipManual" type="text" placeholder="или введите название гражданства" class="mt-8" />
+          <div class="hint">Если нужного гражданства нет — введите название в поле ниже.</div>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn btn-primary btn-block" id="submit-btn">Создать аккаунт</button>
+        </div>
+        <p class="muted center mt-16 mb-0">
+          Уже есть аккаунт? <a href="/login.html">Войти</a>
+        </p>
+      </form>
+    </main>
+
+    <footer>Foreign Citizen Rules · учебный проект, группа 3</footer>
+  </div>
+
+  <script type="module">
+    import { api, auth } from '/assets/api.js';
+    import { renderTopbar, showAlert, clearAlerts } from '/assets/ui.js';
+
+    renderTopbar();
+
+    // Подтягиваем справочник гражданств.
+    (async () => {
+      try {
+        const list = await api.citizenships();
+        const sel = document.getElementById('citizenshipName');
+        for (const item of list) {
+          const opt = document.createElement('option');
+          opt.value = item.name;
+          opt.textContent = item.name;
+          sel.appendChild(opt);
+        }
+      } catch (e) { /* справочник может быть пуст */ }
+    })();
+
+    document.getElementById('register-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      clearAlerts();
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+
+      const data = new FormData(ev.target);
+      const manual = document.getElementById('citizenshipManual').value.trim();
+      const citizenshipName = manual || data.get('citizenshipName');
+
+      if (!citizenshipName) {
+        showAlert('err', 'Выберите гражданство из списка или введите его вручную');
+        btn.disabled = false;
+        return;
+      }
+
+      try {
+        await api.registerCitizen({
+          fullName: data.get('fullName'),
+          email: data.get('email'),
+          password: data.get('password'),
+          citizenshipName,
+        });
+        // После регистрации сразу логиним.
+        const login = await api.login({ email: data.get('email'), password: data.get('password') });
+        auth.setToken(login.token);
+        auth.setCitizen(login.citizen);
+        location.href = '/profile.html';
+      } catch (e) {
+        showAlert('err', e.message || 'Не удалось зарегистрироваться');
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

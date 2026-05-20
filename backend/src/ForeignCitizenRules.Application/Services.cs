@@ -26,22 +26,29 @@ public sealed class RuleApplicationService(RulesDbContext db)
             TargetDocument = targetDocument,
             Guidance = new Guidance
             {
-                Description = request.Guidance!.Description!.Trim(),
-                Refusal = request.Guidance.Refusal!.Trim()
+                Description = request.Guidance!.Description!.Trim()
             }
         };
 
         foreach (var profileRequest in request.Profiles!)
         {
-            var profile = new Profile { StayDays = profileRequest.StayDays };
+            var profile = new Profile
+            {
+                StayDays = profileRequest.StayDays,
+                Priority = profileRequest.Priority,
+                IsFallback = profileRequest.IsFallback
+            };
             foreach (var stayPurposeName in profileRequest.StayPurposes!)
             {
                 profile.StayPurposes.Add(await GetOrCreateStayPurposeAsync(stayPurposeName.Trim(), cancellationToken));
             }
 
-            foreach (var citizenshipName in profileRequest.Citizenships!)
+            foreach (var citizenshipName in profileRequest.Citizenships ?? [])
             {
-                profile.Citizenships.Add(await GetOrCreateCitizenshipAsync(citizenshipName.Trim(), cancellationToken));
+                if (!string.IsNullOrWhiteSpace(citizenshipName))
+                {
+                    profile.Citizenships.Add(await GetOrCreateCitizenshipAsync(citizenshipName.Trim(), cancellationToken));
+                }
             }
 
             foreach (var property in profileRequest.Properties ?? [])
@@ -108,7 +115,9 @@ public sealed class RuleApplicationService(RulesDbContext db)
 
     private async Task<StayPurpose> GetOrCreateStayPurposeAsync(string name, CancellationToken cancellationToken)
     {
-        var purpose = await db.StayPurposes.SingleOrDefaultAsync(x => x.Name == name, cancellationToken);
+        var purpose = await db.StayPurposes
+            .OrderBy(x => x.Id)
+            .FirstOrDefaultAsync(x => x.Name == name, cancellationToken);
         if (purpose != null)
         {
             return purpose;
@@ -121,7 +130,9 @@ public sealed class RuleApplicationService(RulesDbContext db)
 
     internal async Task<Citizenship> GetOrCreateCitizenshipAsync(string name, CancellationToken cancellationToken = default)
     {
-        var citizenship = await db.Citizenships.SingleOrDefaultAsync(x => x.Name == name, cancellationToken);
+        var citizenship = await db.Citizenships
+            .OrderBy(x => x.Id)
+            .FirstOrDefaultAsync(x => x.Name == name, cancellationToken);
         if (citizenship != null)
         {
             return citizenship;
@@ -139,11 +150,13 @@ public sealed class RuleApplicationService(RulesDbContext db)
             Id = rule.Id,
             Name = rule.Name,
             RoadmapVersion = rule.Roadmap.Version,
-            Guidance = new GuidanceDto { Description = rule.Guidance.Description, Refusal = rule.Guidance.Refusal },
+            Guidance = new GuidanceDto { Description = rule.Guidance.Description },
             TargetDocument = DocumentApplicationService.ToDto(rule.TargetDocument),
             Profiles = rule.Profiles.Select(p => new ProfileDto
             {
                 StayDays = p.StayDays,
+                Priority = p.Priority,
+                IsFallback = p.IsFallback,
                 StayPurposes = p.StayPurposes.Select(x => x.Name).ToList(),
                 Citizenships = p.Citizenships.Select(x => x.Name).ToList(),
                 Properties = p.Properties.Select(x => new ProfilePropertyDto { Name = x.Name, Value = x.Value }).ToList()
@@ -156,14 +169,16 @@ public sealed class RuleApplicationService(RulesDbContext db)
         if (string.IsNullOrWhiteSpace(request.Name)) throw new ArgumentException("Rule name is required.", nameof(request));
         if (string.IsNullOrWhiteSpace(request.RoadmapVersion)) throw new ArgumentException("Roadmap version is required.", nameof(request));
         if (request.TargetDocumentId <= 0) throw new ArgumentException("TargetDocumentId is required.", nameof(request));
-        if (request.Guidance == null || string.IsNullOrWhiteSpace(request.Guidance.Description) || string.IsNullOrWhiteSpace(request.Guidance.Refusal)) throw new ArgumentException("Guidance with description and refusal is required.", nameof(request));
+        if (request.Guidance == null || string.IsNullOrWhiteSpace(request.Guidance.Description)) throw new ArgumentException("Guidance description is required.", nameof(request));
         if (request.Profiles == null || request.Profiles.Count == 0) throw new ArgumentException("At least one Profile is required.", nameof(request));
 
         foreach (var profile in request.Profiles)
         {
             if (profile.StayDays <= 0) throw new ArgumentException("Profile.StayDays must be greater than 0.", nameof(request));
             if (profile.StayPurposes == null || profile.StayPurposes.Count == 0) throw new ArgumentException("Profile must have at least one StayPurpose.", nameof(request));
-            if (profile.Citizenships == null || profile.Citizenships.Count == 0) throw new ArgumentException("Profile must have at least one Citizenship.", nameof(request));
+            var hasCitizenships = profile.Citizenships?.Any(x => !string.IsNullOrWhiteSpace(x)) == true;
+            var hasProperties = profile.Properties?.Any(x => !string.IsNullOrWhiteSpace(x.Name)) == true;
+            if (!profile.IsFallback && !hasCitizenships && !hasProperties) throw new ArgumentException("Profile must have at least one Citizenship or Property.", nameof(request));
         }
     }
 }
@@ -280,12 +295,38 @@ public sealed class ReferenceApplicationService(RulesDbContext db)
 {
     public async Task<IReadOnlyList<ReferenceItemDto>> GetStayPurposesAsync(CancellationToken cancellationToken = default)
     {
-        return await db.StayPurposes.OrderBy(x => x.Name).Select(x => new ReferenceItemDto { Id = x.Id, Name = x.Name }).ToListAsync(cancellationToken);
+        return await db.StayPurposes
+            .GroupBy(x => x.Name)
+            .Select(x => new ReferenceItemDto { Id = x.Min(p => p.Id), Name = x.Key })
+            .OrderBy(x => x.Name)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<ReferenceItemDto>> GetCitizenshipsAsync(CancellationToken cancellationToken = default)
     {
-        return await db.Citizenships.OrderBy(x => x.Name).Select(x => new ReferenceItemDto { Id = x.Id, Name = x.Name }).ToListAsync(cancellationToken);
+        return await db.Citizenships
+            .GroupBy(x => x.Name)
+            .Select(x => new ReferenceItemDto { Id = x.Min(c => c.Id), Name = x.Key })
+            .OrderBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ProfilePropertyReferenceDto>> GetProfilePropertiesAsync(CancellationToken cancellationToken = default)
+    {
+        var properties = await db.ProfileProperties
+            .Where(x => x.Name != string.Empty)
+            .Select(x => new { x.Name, x.Value })
+            .ToListAsync(cancellationToken);
+
+        return properties
+            .GroupBy(x => x.Name)
+            .OrderBy(x => x.Key)
+            .Select(x => new ProfilePropertyReferenceDto
+            {
+                Name = x.Key,
+                Values = x.Select(p => p.Value ?? string.Empty).Distinct().OrderBy(v => v).ToList()
+            })
+            .ToList();
     }
 }
 

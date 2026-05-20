@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Foreign Citizen Rules - система правил для иностранных граждан</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="topbar" id="topbar"></header>
+
+    <main class="container">
+      <section class="hero">
+        <h1>Дорожная карта для иностранного гражданина</h1>
+        <p>
+          Сервис подбирает правила пребывания на основе цели въезда, гражданства,
+          срока пребывания и индивидуальных свойств профиля. На выходе - список
+          организаций, в которые нужно обратиться, и крайних сроков.
+        </p>
+        <div class="cta">
+          <a href="/register.html" class="btn btn-primary">Создать аккаунт</a>
+          <a href="/login.html" class="btn btn-accent">Войти</a>
+        </div>
+      </section>
+
+      <div class="form-row" style="grid-template-columns: repeat(3, 1fr); gap: 16px;">
+        <div class="card">
+          <h3>1. Зарегистрируйтесь</h3>
+          <p class="mb-0">
+            Укажите ФИО, e-mail, гражданство и пароль. Дополнительные свойства профиля
+            (льготник, высококвалифицированный специалист и т.п.) задаются в разделе «Профиль».
+          </p>
+        </div>
+        <div class="card">
+          <h3>2. Заполните профиль</h3>
+          <p class="mb-0">
+          Укажите Ваши дополнительные характеристики, если они есть. Это нужно для подбора дорожной карты.
+          </p>
+        </div>
+        <div class="card">
+          <h3>3. Получите дорожную карту</h3>
+          <p class="mb-0">
+            Укажите дату въезда и цель пребывания - сервис вернёт целевой документ, организации,
+            крайние сроки и инструкции.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer>Foreign Citizen Rules · учебный проект, группа 3</footer>
+  </div>
+
+  <script type="module">
+    import { renderTopbar } from '/assets/ui.js';
+    renderTopbar('home');
+  </script>
+</body>
+</html>

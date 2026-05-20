@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Админка · Foreign Citizen Rules</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="topbar" id="topbar"></header>
+
+    <main class="container">
+      <h1>Администрирование</h1>
+
+      <div id="alerts"></div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="orgs">Организации</button>
+        <button class="tab" data-tab="docs">Целевые документы</button>
+        <button class="tab" data-tab="rules">Правила</button>
+      </div>
+
+      <!-- =========== ОРГАНИЗАЦИИ =========== -->
+      <section class="tab-panel active" data-panel="orgs">
+        <div class="card">
+          <h2 id="org-form-title">Добавить организацию</h2>
+          <form id="org-form">
+            <div class="form-row">
+              <div class="field">
+                <label for="org-name">Название</label>
+                <input id="org-name" required />
+              </div>
+              <div class="field">
+                <label for="org-address">Адрес</label>
+                <input id="org-address" required />
+              </div>
+            </div>
+            <input type="hidden" id="org-id" />
+            <div class="actions">
+              <button type="submit" class="btn btn-primary">Сохранить</button>
+              <button type="button" id="org-reset" class="btn btn-ghost" hidden>Отменить редактирование</button>
+            </div>
+          </form>
+        </div>
+        <div id="orgs-list"></div>
+      </section>
+
+      <!-- =========== ЦЕЛЕВЫЕ ДОКУМЕНТЫ =========== -->
+      <section class="tab-panel" data-panel="docs">
+        <div class="card">
+          <h2 id="doc-form-title">Добавить целевой документ</h2>
+          <form id="doc-form">
+            <div class="field">
+              <label for="doc-name">Название документа</label>
+              <input id="doc-name" required />
+            </div>
+            <div class="field">
+              <label>Организации</label>
+              <div id="doc-orgs-checkboxes" class="checkbox-list"></div>
+              <div class="hint">Отметьте одну или несколько.</div>
+            </div>
+            <input type="hidden" id="doc-id" />
+            <div class="actions">
+              <button type="submit" class="btn btn-primary">Сохранить</button>
+              <button type="button" id="doc-reset" class="btn btn-ghost" hidden>Отменить редактирование</button>
+            </div>
+          </form>
+        </div>
+        <div id="docs-list"></div>
+      </section>
+
+      <!-- =========== ПРАВИЛА =========== -->
+      <section class="tab-panel" data-panel="rules">
+        <div class="card">
+          <h2>Добавить правило</h2>
+          <form id="rule-form">
+            <div class="form-row">
+              <div class="field">
+                <label for="rule-name">Название</label>
+                <input id="rule-name" required placeholder="Медосвидетельствование для работы" />
+              </div>
+              <div class="field">
+                <label for="rule-version">Версия дорожной карты</label>
+                <input id="rule-version" required placeholder="v1" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="rule-document">Целевой документ</label>
+              <select id="rule-document" required></select>
+            </div>
+
+            <h3 class="mt-16">Руководство</h3>
+            <div class="field">
+              <label for="rule-desc">Описание</label>
+              <textarea id="rule-desc" required></textarea>
+            </div>
+
+            <h3 class="mt-16">Профили правила</h3>
+            <p class="muted">
+              Хотя бы один профиль. У каждого - дни пребывания, цели, гражданства и опциональные свойства.
+              Подбор сработает, если в профиле гражданина есть все указанные свойства.
+            </p>
+            <div id="profiles-list"></div>
+            <button type="button" class="btn btn-secondary btn-sm" id="add-profile">+ Добавить профиль</button>
+
+            <div class="actions mt-16">
+              <button type="submit" class="btn btn-primary">Создать правило</button>
+            </div>
+          </form>
+        </div>
+        <div id="rules-list"></div>
+      </section>
+    </main>
+
+    <footer>Foreign Citizen Rules · учебный проект, группа 3</footer>
+  </div>
+
+  <script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

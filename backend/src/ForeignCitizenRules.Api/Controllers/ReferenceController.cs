@@ -17,4 +17,10 @@ public sealed class ReferenceController(ReferenceApplicationService references) 
     {
         return Ok(await references.GetCitizenshipsAsync(cancellationToken));
     }
+
+    [HttpGet("profile-properties")]
+    public async Task<IActionResult> GetProfileProperties(CancellationToken cancellationToken)
+    {
+        return Ok(await references.GetProfilePropertiesAsync(cancellationToken));
+    }
 }
