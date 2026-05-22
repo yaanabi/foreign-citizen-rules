@@ -19,35 +19,32 @@ public sealed class RuleApplicationService(RulesDbContext db)
             .SingleOrDefaultAsync(x => x.Id == request.TargetDocumentId, cancellationToken)
             ?? throw new ArgumentException("TargetDocument was not found.", nameof(request));
 
-        var rule = new Rule
-        {
-            Name = request.Name!.Trim(),
-            Roadmap = roadmap,
-            TargetDocument = targetDocument,
-            Guidance = new Guidance
+        var ruleBuilder = new RuleBuilder()
+            .SetName(request.Name!)
+            .AddRoadmap(roadmap)
+            .AddDocument(targetDocument)
+            .AddGuidance(new Guidance
             {
                 Description = request.Guidance!.Description!.Trim()
-            }
-        };
+            });
 
         foreach (var profileRequest in request.Profiles!)
         {
-            var profile = new Profile
-            {
-                StayDays = profileRequest.StayDays,
-                Priority = profileRequest.Priority,
-                IsFallback = profileRequest.IsFallback
-            };
+            var profileBuilder = new ProfileBuilder()
+                .SetStayDays(profileRequest.StayDays)
+                .SetPriority(profileRequest.Priority)
+                .SetFallback(profileRequest.IsFallback);
+
             foreach (var stayPurposeName in profileRequest.StayPurposes!)
             {
-                profile.StayPurposes.Add(await GetOrCreateStayPurposeAsync(stayPurposeName.Trim(), cancellationToken));
+                profileBuilder.AddStayPurpose(await GetOrCreateStayPurposeAsync(stayPurposeName.Trim(), cancellationToken));
             }
 
             foreach (var citizenshipName in profileRequest.Citizenships ?? [])
             {
                 if (!string.IsNullOrWhiteSpace(citizenshipName))
                 {
-                    profile.Citizenships.Add(await GetOrCreateCitizenshipAsync(citizenshipName.Trim(), cancellationToken));
+                    profileBuilder.AddCitizenship(await GetOrCreateCitizenshipAsync(citizenshipName.Trim(), cancellationToken));
                 }
             }
 
@@ -55,17 +52,14 @@ public sealed class RuleApplicationService(RulesDbContext db)
             {
                 if (!string.IsNullOrWhiteSpace(property.Name))
                 {
-                    profile.Properties.Add(new ProfileProperty
-                    {
-                        Name = property.Name.Trim(),
-                        Value = property.Value?.Trim()
-                    });
+                    profileBuilder.AddProfileProperty(property.Name, property.Value);
                 }
             }
 
-            rule.Profiles.Add(profile);
+            ruleBuilder.AddProfile(profileBuilder.GetProfile());
         }
 
+        var rule = ruleBuilder.GetRule();
         db.Rules.Add(rule);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

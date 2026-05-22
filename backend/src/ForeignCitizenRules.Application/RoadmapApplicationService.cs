@@ -146,7 +146,10 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
 
     private static int GetMatchPriority(Profile profile, string citizenshipName, ICollection<CitizenProfileProperty> citizenProperties)
     {
-        var matchedPropertyNames = GetMatchedPropertyNames(profile.Properties, citizenProperties).ToList();
+        var propertiesMatch = AllRulePropertiesMatch(profile.Properties, citizenProperties);
+        var matchedPropertyNames = propertiesMatch
+            ? GetMatchedPropertyNames(profile.Properties, citizenProperties).ToList()
+            : [];
 
         if (matchedPropertyNames.Any(IsHighQualifiedSpecialistProperty))
         {
@@ -202,7 +205,7 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
             name.Contains("compatriot");
     }
 
-    private static bool AnyRulePropertyMatches(ICollection<ProfileProperty> ruleProperties, ICollection<CitizenProfileProperty> citizenProperties)
+    private static bool AllRulePropertiesMatch(ICollection<ProfileProperty> ruleProperties, ICollection<CitizenProfileProperty> citizenProperties)
     {
         var citizenPairs = new HashSet<string>(citizenProperties
             .Where(x => !string.IsNullOrWhiteSpace(x.Name))
@@ -210,7 +213,7 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
 
         return ruleProperties
             .Where(x => !string.IsNullOrWhiteSpace(x.Name))
-            .Any(x => citizenPairs.Contains(PropertyKey(x.Name, x.Value)));
+            .All(x => citizenPairs.Contains(PropertyKey(x.Name, x.Value)));
     }
 
     private static CitizenRoadmapDto ToDto(CitizenRoadmapRequest request, RoadmapMatch? match)
