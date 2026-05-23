@@ -35,9 +35,9 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
             MatchedDaysPassed = metrics?.DaysPassed,
             MatchedDaysRemaining = metrics?.DaysRemaining,
             MatchedDeadlineDate = metrics?.DeadlineDate,
-            MatchedTargetDocumentName = match?.Rule.TargetDocument.Name,
+            MatchedTargetDocumentName = match?.Rule.TargetDocumentName,
             MatchedOrganizationsJson = match == null ? null : JsonSerializer.Serialize(match.Rule.TargetDocument.Organizations.OrderBy(x => x.Name).Select(DocumentApplicationService.ToDto).ToList()),
-            MatchedGuidanceDescription = match?.Rule.Guidance.Description,
+            MatchedGuidanceDescription = match?.Rule.GuidanceDescription,
             CreatedAt = DateTime.UtcNow,
             Status = match == null ? "not_found" : "matched",
             Message = message
@@ -235,7 +235,7 @@ public sealed class RoadmapApplicationService(RulesDbContext db, CitizenApplicat
             DeadlineDate = metrics?.DeadlineDate,
             IsOverdue = metrics?.IsOverdue ?? false,
             TargetDocument = match?.Rule.TargetDocument == null ? null : DocumentApplicationService.ToDto(match.Rule.TargetDocument),
-            Guidance = match?.Rule.Guidance == null ? null : new GuidanceDto { Description = match.Rule.Guidance.Description }
+            Guidance = match == null ? null : new GuidanceDto { Description = match.Rule.GuidanceDescription }
         };
     }
 

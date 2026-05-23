@@ -17,6 +17,9 @@ public sealed class Rule
     public TargetDocument TargetDocument { get; set; } = null!;
     public Guidance Guidance { get; set; } = null!;
     public ICollection<Profile> Profiles { get; set; } = new HashSet<Profile>();
+    public string RoadmapVersion => Roadmap.Version;
+    public string GuidanceDescription => Guidance.Description;
+    public string TargetDocumentName => TargetDocument.Name;
 }
 
 public sealed class Profile

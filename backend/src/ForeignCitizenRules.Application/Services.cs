@@ -19,47 +19,48 @@ public sealed class RuleApplicationService(RulesDbContext db)
             .SingleOrDefaultAsync(x => x.Id == request.TargetDocumentId, cancellationToken)
             ?? throw new ArgumentException("TargetDocument was not found.", nameof(request));
 
-        var ruleBuilder = new RuleBuilder()
-            .SetName(request.Name!)
-            .AddRoadmap(roadmap)
-            .AddDocument(targetDocument)
-            .AddGuidance(new Guidance
-            {
-                Description = request.Guidance!.Description!.Trim()
-            });
+        var profileBuilder = new ProfileBuilder();
+        var profiles = new List<Profile>();
 
         foreach (var profileRequest in request.Profiles!)
         {
-            var profileBuilder = new ProfileBuilder()
-                .SetStayDays(profileRequest.StayDays)
-                .SetPriority(profileRequest.Priority)
-                .SetFallback(profileRequest.IsFallback);
+            var stayPurposes = new List<StayPurpose>();
+            var citizenships = new List<Citizenship>();
 
             foreach (var stayPurposeName in profileRequest.StayPurposes!)
             {
-                profileBuilder.AddStayPurpose(await GetOrCreateStayPurposeAsync(stayPurposeName.Trim(), cancellationToken));
+                stayPurposes.Add(await GetOrCreateStayPurposeAsync(stayPurposeName.Trim(), cancellationToken));
             }
 
             foreach (var citizenshipName in profileRequest.Citizenships ?? [])
             {
                 if (!string.IsNullOrWhiteSpace(citizenshipName))
                 {
-                    profileBuilder.AddCitizenship(await GetOrCreateCitizenshipAsync(citizenshipName.Trim(), cancellationToken));
+                    citizenships.Add(await GetOrCreateCitizenshipAsync(citizenshipName.Trim(), cancellationToken));
                 }
             }
 
-            foreach (var property in profileRequest.Properties ?? [])
-            {
-                if (!string.IsNullOrWhiteSpace(property.Name))
-                {
-                    profileBuilder.AddProfileProperty(property.Name, property.Value);
-                }
-            }
+            var properties = (profileRequest.Properties ?? [])
+                .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                .Select(x => (Name: x.Name!, x.Value))
+                .ToList();
 
-            ruleBuilder.AddProfile(profileBuilder.GetProfile());
+            profiles.Add(profileBuilder.BuildProfile(
+                profileRequest.StayDays,
+                profileRequest.Priority,
+                profileRequest.IsFallback,
+                stayPurposes,
+                citizenships,
+                properties));
         }
 
-        var rule = ruleBuilder.GetRule();
+        var rule = new RuleBuilder().BuildRule(
+            request.Name!,
+            request.Guidance!.Description!,
+            roadmap,
+            targetDocument,
+            profiles);
+
         db.Rules.Add(rule);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -143,8 +144,8 @@ public sealed class RuleApplicationService(RulesDbContext db)
         {
             Id = rule.Id,
             Name = rule.Name,
-            RoadmapVersion = rule.Roadmap.Version,
-            Guidance = new GuidanceDto { Description = rule.Guidance.Description },
+            RoadmapVersion = rule.RoadmapVersion,
+            Guidance = new GuidanceDto { Description = rule.GuidanceDescription },
             TargetDocument = DocumentApplicationService.ToDto(rule.TargetDocument),
             Profiles = rule.Profiles.Select(p => new ProfileDto
             {
