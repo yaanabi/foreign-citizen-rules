@@ -4,69 +4,94 @@ namespace ForeignCitizenRules.Application;
 
 public sealed class RuleBuilder
 {
-    public Rule BuildRule(
-        string name,
-        string guidanceDescription,
-        Roadmap roadmap,
-        TargetDocument targetDocument,
-        IEnumerable<Profile> profiles)
+    private readonly Rule _rule = new();
+
+    public RuleBuilder SetName(string name)
     {
-        var rule = new Rule
-        {
-            Name = name.Trim(),
-            Roadmap = roadmap,
-            TargetDocument = targetDocument,
-            Guidance = new Guidance
-            {
-                Description = guidanceDescription.Trim()
-            }
-        };
+        _rule.Name = name.Trim();
+        return this;
+    }
 
-        foreach (var profile in profiles)
-        {
-            rule.Profiles.Add(profile);
-        }
+    public RuleBuilder AddProfile(Profile profile)
+    {
+        _rule.Profiles.Add(profile);
+        return this;
+    }
 
-        return rule;
+    public RuleBuilder AddDocument(TargetDocument document)
+    {
+        _rule.TargetDocument = document;
+        return this;
+    }
+
+    public RuleBuilder AddGuidance(Guidance guidance)
+    {
+        _rule.Guidance = guidance;
+        return this;
+    }
+
+    public RuleBuilder AddRoadmap(Roadmap roadmap)
+    {
+        _rule.Roadmap = roadmap;
+        return this;
+    }
+
+    public Rule GetRule()
+    {
+        return _rule;
     }
 }
 
 public sealed class ProfileBuilder
 {
-    public Profile BuildProfile(
-        int stayDays,
-        int priority,
-        bool isFallback,
-        IEnumerable<StayPurpose> stayPurposes,
-        IEnumerable<Citizenship> citizenships,
-        IEnumerable<(string Name, string? Value)> properties)
+    private readonly Profile _profile = new();
+
+    public ProfileBuilder SetStayDays(int days)
     {
-        var profile = new Profile
-        {
-            StayDays = stayDays,
-            Priority = priority,
-            IsFallback = isFallback
-        };
+        _profile.StayDays = days;
+        return this;
+    }
 
-        foreach (var stayPurpose in stayPurposes)
-        {
-            profile.StayPurposes.Add(stayPurpose);
-        }
+    public ProfileBuilder SetPriority(int priority)
+    {
+        _profile.Priority = priority;
+        return this;
+    }
 
-        foreach (var citizenship in citizenships)
-        {
-            profile.Citizenships.Add(citizenship);
-        }
+    public ProfileBuilder SetIsFallback(bool isFallback)
+    {
+        _profile.IsFallback = isFallback;
+        return this;
+    }
 
-        foreach (var property in properties.Where(x => !string.IsNullOrWhiteSpace(x.Name)))
+    public ProfileBuilder AddStayPurpose(StayPurpose stayPurpose)
+    {
+        _profile.StayPurposes.Add(stayPurpose);
+        return this;
+    }
+
+    public ProfileBuilder AddCitizenship(Citizenship citizenship)
+    {
+        _profile.Citizenships.Add(citizenship);
+        return this;
+    }
+
+    public ProfileBuilder AddProfileProperty(string name, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(name))
         {
-            profile.Properties.Add(new ProfileProperty
+            _profile.Properties.Add(new ProfileProperty
             {
-                Name = property.Name.Trim(),
-                Value = property.Value?.Trim()
+                Name = name.Trim(),
+                Value = value?.Trim()
             });
         }
 
-        return profile;
+        return this;
+    }
+
+    public Profile GetProfile()
+    {
+        return _profile;
     }
 }

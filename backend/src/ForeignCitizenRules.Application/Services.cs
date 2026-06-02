@@ -19,7 +19,6 @@ public sealed class RuleApplicationService(RulesDbContext db)
             .SingleOrDefaultAsync(x => x.Id == request.TargetDocumentId, cancellationToken)
             ?? throw new ArgumentException("TargetDocument was not found.", nameof(request));
 
-        var profileBuilder = new ProfileBuilder();
         var profiles = new List<Profile>();
 
         foreach (var profileRequest in request.Profiles!)
@@ -45,7 +44,7 @@ public sealed class RuleApplicationService(RulesDbContext db)
                 .Select(x => (Name: x.Name!, x.Value))
                 .ToList();
 
-            profiles.Add(profileBuilder.BuildProfile(
+            profiles.Add(BuildProfile(
                 profileRequest.StayDays,
                 profileRequest.Priority,
                 profileRequest.IsFallback,
@@ -54,7 +53,7 @@ public sealed class RuleApplicationService(RulesDbContext db)
                 properties));
         }
 
-        var rule = new RuleBuilder().BuildRule(
+        var rule = BuildRule(
             request.Name!,
             request.Guidance!.Description!,
             roadmap,
@@ -93,6 +92,58 @@ public sealed class RuleApplicationService(RulesDbContext db)
             .Include(x => x.Profiles).ThenInclude(x => x.Properties)
             .Include(x => x.Profiles).ThenInclude(x => x.StayPurposes)
             .Include(x => x.Profiles).ThenInclude(x => x.Citizenships);
+    }
+
+    private static Rule BuildRule(
+        string name,
+        string guidanceDescription,
+        Roadmap roadmap,
+        TargetDocument targetDocument,
+        IEnumerable<Profile> profiles)
+    {
+        var builder = new RuleBuilder()
+            .SetName(name)
+            .AddRoadmap(roadmap)
+            .AddDocument(targetDocument)
+            .AddGuidance(new Guidance { Description = guidanceDescription.Trim() });
+
+        foreach (var profile in profiles)
+        {
+            builder.AddProfile(profile);
+        }
+
+        return builder.GetRule();
+    }
+
+    private static Profile BuildProfile(
+        int stayDays,
+        int priority,
+        bool isFallback,
+        IEnumerable<StayPurpose> stayPurposes,
+        IEnumerable<Citizenship> citizenships,
+        IEnumerable<(string Name, string? Value)> properties)
+    {
+        var builder = new ProfileBuilder()
+            .SetStayDays(stayDays)
+            .SetPriority(priority)
+            .SetIsFallback(isFallback);
+
+        foreach (var stayPurpose in stayPurposes)
+        {
+            builder.AddStayPurpose(stayPurpose);
+        }
+
+        foreach (var citizenship in citizenships)
+        {
+            builder.AddCitizenship(citizenship);
+        }
+
+        foreach (var property in properties)
+        {
+            builder.AddProfileProperty(property.Name, property.Value);
+        }
+
+        return builder.GetProfile();
     }
 
     private async Task<Roadmap> GetOrCreateRoadmapAsync(string version, CancellationToken cancellationToken)
